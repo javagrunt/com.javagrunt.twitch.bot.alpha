@@ -1,0 +1,4 @@
+twitch:
+  channel: channelname
+  oauth-token: somestring
+  username: javagrunt

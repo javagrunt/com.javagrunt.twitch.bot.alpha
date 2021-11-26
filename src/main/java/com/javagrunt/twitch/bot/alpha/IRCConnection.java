@@ -19,12 +19,11 @@ import java.util.stream.Stream;
 public class IRCConnection {
     private final IrcProperties ircProperties;
     private PrintWriter out;
-
+    private Socket sock;
     private Flux<String> messages;
 
-    public IRCConnection(IrcProperties ircProperties) throws IOException {
+    public IRCConnection(IrcProperties ircProperties) {
         this.ircProperties = ircProperties;
-        connect();
     }
 
     /**
@@ -33,12 +32,16 @@ public class IRCConnection {
      *
      * @throws IOException could be UnknownHostException
      */
-    private void connect() throws IOException {
-        Socket sock = new Socket(ircProperties.getHost(), ircProperties.getPort());
+    public void connect() throws IOException {
+        sock = new Socket(ircProperties.getHost(), ircProperties.getPort());
         this.out = new PrintWriter(sock.getOutputStream(), true);
         BufferedReader in = new BufferedReader(new InputStreamReader(sock.getInputStream()));
         Stream<String> inputStream = in.lines();
-        this.messages = Flux.fromStream(inputStream);
+        messages = Flux.fromStream(inputStream);
+    }
+
+    public Boolean isConnected(){
+        return sock.isConnected();
     }
 
     /**
@@ -47,10 +50,13 @@ public class IRCConnection {
      * @param oauth OAuth token for the account to authorize with
      * @param nick Username to authenticate with
      */
-    public Flux<String> authorizeCommunication(String oauth, String nick) {
+    public void authorizeCommunication(String oauth, String nick) {
         send("PASS " + oauth);
         send("NICK " + nick);
-        return this.messages;
+    }
+
+    public Flux<String> getMessages(){
+        return messages;
     }
 
     /**
@@ -59,12 +65,10 @@ public class IRCConnection {
      */
     public void joinChannel(String channel) {
         send("JOIN #" + channel);
-        log.info("Joined #" + channel);
     }
 
     public void pong(String message){
         send(message.replace("PING", "PONG"));
-        log.info("PONG");
     }
 
     /**

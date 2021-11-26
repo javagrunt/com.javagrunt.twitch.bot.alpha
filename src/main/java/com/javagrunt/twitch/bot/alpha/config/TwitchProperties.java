@@ -10,11 +10,16 @@ import javax.validation.constraints.NotBlank;
 @ConfigurationProperties(prefix = "twitch")
 @Data
 public class TwitchProperties {
+    public static final String TWITCH = "twitch";
     @NotBlank
     private String username;
     @NotBlank
     private String oauthToken;
     @NotBlank
     private String channel;
-
+    @NotBlank
+    private String clientId;
+    @NotBlank
+    private String clientSecret;
+    private Integer authenticationTimeoutSeconds = 10;
 }

@@ -2,3 +2,6 @@ twitch:
   channel: channelname
   oauth-token: somestring
   username: javagrunt
+  authenticationTimeoutSeconds: 0
+  clientId: clientId
+  clientSecret: clientSecret

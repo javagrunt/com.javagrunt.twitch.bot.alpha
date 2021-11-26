@@ -1,5 +1,10 @@
 package com.javagrunt.twitch.bot.alpha;
 
+import com.github.philippheuer.credentialmanager.domain.OAuth2Credential;
+import com.github.twitch4j.TwitchClient;
+import com.github.twitch4j.TwitchClientBuilder;
+import com.github.twitch4j.helix.TwitchHelix;
+import com.github.twitch4j.helix.TwitchHelixBuilder;
 import com.javagrunt.twitch.bot.alpha.commands.BotCommand;
 import com.javagrunt.twitch.bot.alpha.config.TwitchProperties;
 import com.javagrunt.twitch.bot.alpha.registry.CommandRegistry;
@@ -9,9 +14,9 @@ import io.micrometer.core.instrument.Metrics;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
+import java.io.IOException;
 import java.util.Set;
 
 @Component
@@ -23,7 +28,6 @@ public class TwitchBot {
     private final CommandRegistry commandRegistry;
     private final CommandMetrics commandMetrics;
     private Counter totalBotCommands_counter;
-    private Boolean isAuthenticated;
 
     /**
      * Connect using the default hostname and port
@@ -32,7 +36,7 @@ public class TwitchBot {
                      IRCConnection ircConnection,
                      CommandRegistry commandRegistry,
                      CommandMetrics commandMetrics,
-                     Set<BotCommand> botCommandSet) {
+                     Set<BotCommand> botCommandSet) throws IOException {
         this.twitchProperties = twitchProperties;
         this.ircConnection = ircConnection;
         //MeterRegistry registry = new SimpleMeterRegistry();
@@ -42,7 +46,14 @@ public class TwitchBot {
         initializeCommandCounter();
         // Enable metrics for schedulers
         Schedulers.enableMetrics();
-        subscribe();
+        TwitchHelix client = TwitchHelixBuilder.builder()
+                .withClientId(twitchProperties.getClientId())
+                .withClientSecret(twitchProperties.getClientSecret())
+                .build();
+
+        TwitchClient twitchClient = TwitchClientBuilder.builder()
+                .withDefaultAuthToken(new OAuth2Credential(TwitchProperties.TWITCH, twitchProperties.getOauthToken()))
+                .build();
     }
 
     private void initializeCommandCounter(){
@@ -58,6 +69,7 @@ public class TwitchBot {
      * @param botCommandSet collection of BotCommand implementations found
      */
     private void registerCommands(Set<BotCommand> botCommandSet) {
+        log.info("Number of commands to register: " + botCommandSet.size());
         for(BotCommand botCommand : botCommandSet) {
             this.commandRegistry.put(botCommand.commandName(), botCommand);
             // Build the counter to gather metrics
@@ -68,31 +80,13 @@ public class TwitchBot {
         }
     }
 
-    private void subscribe() {
-        Flux<String> messages = ircConnection.authorizeCommunication(twitchProperties.getOauthToken(), twitchProperties.getUsername());
-        messages.metrics().subscribeOn(Schedulers.parallel()).subscribe(this::processMessage);
-        waitForAuthentication();
+    private void subscribe() throws IOException {
+        ircConnection.connect();
+        ircConnection.authorizeCommunication(twitchProperties.getOauthToken(), twitchProperties.getUsername());
+        ircConnection.getMessages().metrics().subscribeOn(Schedulers.parallel()).subscribe(this::processMessage);
+        ircConnection.joinChannel(twitchProperties.getChannel());
     }
 
-    /**
-     * Waits until either the underlying IRC connection is authenticated or the timeout is reached
-     *
-     */
-    private void waitForAuthentication() {
-        int count = 0;
-        while (count < 10) {
-            if (this.isAuthenticated) {
-                return;
-            } else {
-                count++;
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    log.error(e.getMessage());
-                }
-            }
-        }
-    }
 
     /**
      * Basic message processing. Automatically handles Twitch API specific messages,
@@ -101,18 +95,25 @@ public class TwitchBot {
      * @param message The message to process
      */
     private void processMessage(String message) {
+//        log.error(message);
         if (message.contains("Welcome, GLHF!")) {
-            this.isAuthenticated = true;
             log.info("AUTHENTICATED TO SERVER");
         } else if (message.startsWith("PING")) {
             log.info("Responding to PING");
             ircConnection.pong(message);
         } else {
-            // Not an internal command, see if it's a bot command
-            TwitchMessage tMessage = new TwitchMessage(message);
-            log.debug(tMessage.getSentBy() + ": " + tMessage.getMessage());
-            if (tMessage.getMessage().startsWith("!")) {
-                processCommand(tMessage);
+            try {
+                // Not an internal command, see if it's a bot command
+                TwitchMessage tMessage = new TwitchMessage(message);
+                log.error(tMessage.getChannel() + ": " + tMessage.getSentBy() + ": " + tMessage.getMessage());
+                if (tMessage.getMessage().startsWith("!")) {
+                    processCommand(tMessage);
+                }else if (tMessage.getMessage().contains("Login unsuccessful")){
+                    log.error("Login failed");
+                    log.error("Socket connected: " + ircConnection.isConnected());
+                }
+            }catch(Exception e){
+                log.error("Could not parse message - Not a bot command");
             }
         }
     }

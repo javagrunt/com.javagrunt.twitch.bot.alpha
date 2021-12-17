@@ -1,0 +1,8 @@
+ twitch:
+   channels:
+   - javagrunt
+   admin-token: oauth:dqckdc61pbp69weo4zzkk6m1p87bby
+   oauth-token: oauth:zwf8sbdyx5q2wi4dyhyi9a006g7l6p
+   authenticationTimeoutSeconds: 5
+   clientId: cazy8sbdnrastt8kke083wutr1vct2
+   clientSecret: 95i0k5zmt9wth7e1gz6vim9m7j2wm0
